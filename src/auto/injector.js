@@ -586,6 +586,18 @@ function annotate(fn) {
  * ```
  */
 
+//Private globals used to track the require function impl, and modules required before the first call to createInjector
+var $$require, $$requiredModules = [];
+function require(modulesToLoad) {
+  modulesToLoad = isArray(modulesToLoad) ? modulesToLoad : [modulesToLoad];
+  if ($$require) {
+    $$require(modulesToLoad);
+  } else {
+    //The user has called require before bootstrap (modules were cached and thus not lazy loaded)
+    // When bootstrap is finally called, these modules will be loaded after the standard injector is created
+    $$requiredModules = $$requiredModules.concat(modulesToLoad);
+  }
+}
 
 function createInjector(modulesToLoad) {
   var INSTANTIATING = {},
@@ -613,9 +625,54 @@ function createInjector(modulesToLoad) {
             return instanceInjector.invoke(provider.$get, provider);
           }));
 
+  function require(compileAndDigest) {
+    var _providerInjector = providerInjector,
+        _instanceInjector = instanceInjector,
+        _loadedModules = loadedModules;
+    return function(modulesToLoad) {
+      var dirty = false, runBlocks = [];
+      
+      forEach(modulesToLoad, function(module) {
+        if (! _loadedModules.get(module)) {
+          dirty = true;
+          runBlocks.concat(loadModules([module]));
+        }
+      });
+      
+      forEach(runBlocks, function(fn) { _instanceInjector.invoke(fn || noop); });
+      
+      //Only compile and digest if this is the root injector and we loaded a new module
+      if (compileAndDigest && dirty) {
+        var $rootScope = _instanceInjector.get('$rootScope'),
+            $rootElement = _instanceInjector.get('$rootElement'),
+            $compile = _instanceInjector.get('$compile');
+        
+        $compile($rootElement)($rootScope);
+        $rootScope.$digest();
+      }
+    }
+  }
+  
+  if (! $$require) {
+    //Only set the global angular.require to the first injector initialized.  
+    // This will be either the injector created by bootstrap or a custom use of $injector.
+    $$require = require(true);
+    instanceInjector.require = $$require;
+  } else {
+    //If the user asks for a custom loader, we cant compile and digest on the root scope.
+    // Its up to the user to compile and digest properly
+    instanceInjector.require = require(false);
+  }
 
   forEach(loadModules(modulesToLoad), function(fn) { instanceInjector.invoke(fn || noop); });
 
+  if ($$requiredModules.length !== 0) {
+    //If the requiredModules array is not empty, the user has called angular.require before bootstrap.
+    // - In this case dont compile and digest, that will be done by the bootstrap
+    require(false)($$requiredModules);
+    $$requiredModules = [];
+  }
+  
   return instanceInjector;
 
   ////////////////////////////////////
