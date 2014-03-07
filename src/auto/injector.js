@@ -52,6 +52,58 @@
  * ```
  */
 
+/**
+ * @ngdoc function
+ * @module ng
+ * @name angular.require
+ * @function
+ *
+ * @description
+ * Add module(s) to the angular runtime before or after bootstrap.  Modules required before bootstrap 
+ * will not be loaded until after bootstrap is invoked.  This ensures the load order remains
+ * consistent even when modules that are loaded asynchronously are cached and thus available 
+ * immediately on a subsequent page refresh.
+ * 
+ * If module(s) were loaded by this routine, the $globalScope and $globalElement will automatically
+ * be compiled and digested.
+ * 
+ * @param {string|Array.<string>} Module or list of modules to be loaded into Angular.  Modules
+ * are only loaded once.
+ * @returns {boolean} Indicates if modules were loaded.
+ *
+ * @example
+ * Loading a custom directive, automatically compiling tags after bootstrap.
+ * ```js
+ *   // Use an AMD library (in this example requirejs) to load modules out of band
+ *   require(['angular-sanatize', 'angular-resource'], function() {
+ *     //Declare your lazy module, include dependencies on modules also loaded by requirejs
+ *     angular.module('LazyModule', ['ngSanitize', 'ngResource'])
+ *       .directive('unsafe', function ($sanitize) {
+ *         return { 
+ *           restrict: 'E', scope: { inject: '=' }, 
+ *           link: function link(scope, elements, attrs) {
+ *             $.each(elements, function(i, element) {
+ *               $(element).append('<div>' + $sanitize(attrs.inject) + '</div>');
+ *             });
+ *           }
+ *         };
+ *       });
+ *     
+ *     //Load your lazy module into the runtime, the root element and scope are
+ *     // automatically compiled and digested.
+ *     angular.require('LazyModule');
+ *   });
+ * ```
+ * 
+ * Load a modularized component
+ * ```js
+ *   // Use an AMD library (in this example requirejs) to load a modularized component
+ *   //  out of band.
+ *   require(['js/lazy-module'], function(LazyModule) {
+ *     angular.require(LazyModule.moduleName);
+ *   );
+ * ```
+ */
 
 /**
  * @ngdoc module
@@ -281,7 +333,23 @@ function annotate(fn) {
  * @returns {Array.<string>} The names of the services which the function requires.
  */
 
-
+/**
+ * @ngdoc method
+ * @name $injector#require
+ * @description
+ * Add module(s) to angular runtime before or after bootstrap.  Modules required before bootstrap 
+ * will not be loaded until after bootstrap is invoked.  This ensures the load order remains
+ * consistent even when modules that are loaded asynchronously are cached and thus available 
+ * immediatly on a subsequent refresh.
+ * 
+ * Only the first $injector initialized by the application will automatically compile and digest
+ * using $globalScope/$globalElement when new modules are required.  All subsequent handles to 
+ * an $injector must use the return value and manually compile and digest from the proper scope.
+ * 
+ * @param {string|Array.<string>} Module or list of modules to be loaded into Angular.  Modules
+ * are only loaded once.
+ * @returns {boolean} Indicates if modules were loaded.
+ */
 
 
 /**
@@ -650,6 +718,8 @@ function createInjector(modulesToLoad) {
         $compile($rootElement)($rootScope);
         $rootScope.$digest();
       }
+      
+      return dirty;
     }
   }
   
@@ -668,7 +738,7 @@ function createInjector(modulesToLoad) {
 
   if ($$requiredModules.length !== 0) {
     //If the requiredModules array is not empty, the user has called angular.require before bootstrap.
-    // - In this case dont compile and digest, that will be done by the bootstrap
+    // In this case dont compile and digest, that will be done by the bootstrap
     require(false)($$requiredModules);
     $$requiredModules = [];
   }
